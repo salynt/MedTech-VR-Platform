@@ -1,0 +1,81 @@
+# Unreal Engine
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+Build/*/
+Build/Android/
+Build/IOS/
+DerivedDataCache/
+
+# Visual Studio files
+.vs/
+*.VC.db
+*.VC.opendb
+*.sln
+*.sdf
+*.opensdf
+*.opendb
+
+# Ignore OS-specific files
+.DS_Store
+Thumbs.db
+
+# Ignore user settings
+*.user
+*.userprefs
+
+# Ignore backup and autosaves
+*_BuiltData.uasset
+*_BuiltData.uexp
+*_HLOD*
+*_LOD*
+*AutoSave*.uasset
+*Autosaves/
+
+# Ignore packaged builds
+WindowsNoEditor/
+LinuxNoEditor/
+HTML5/
+Android/
+iOS/
+
+# Ignore configs that shouldn’t be versioned
+/Saved/
+*.log
+*.tlog
+
+# Ignore Plugins that include binaries (optional)
+Plugins/*/Binaries/
+Plugins/*/Intermediate/
+
+# Cache folders
+DerivedDataCache/
+
+# Ignore Rider files
+.idea/
+
+# Ignore generated project files
+*.xcodeproj
+*.xcworkspace
+*.xcconfig
+*.target
+*.workspace
+*.gcc
+*.clang
+
+# Ignore Unreal Build Tool files
+*.sln
+*.project
+*.targets
+*.filters
+
+# CMake (if using it)
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Python Cache (if used)
+__pycache__/
+*.pyc
