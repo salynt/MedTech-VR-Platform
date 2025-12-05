@@ -1,54 +1,50 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "InputActionValue.h"
-#include "EnhancedInputSubsystems.h"
-#include "EnhancedInputComponent.h"
-#include "Camera/CameraComponent.h"
 #include "NewVrPawn.generated.h"
 
-class ABrainRigActor;
-
-class UInputMappingContext;
-class UInputAction;
 class UCameraComponent;
-class UEnhancedInputComponent;
+class UInputAction;
+class UInputMappingContext;
 
-UCLASS(Blueprintable, BlueprintType)
+UCLASS()
 class BRAINTUMORPROTOTYPE_API ANewVrPawn : public ACharacter
 {
-	GENERATED_BODY()
+    GENERATED_BODY()
 
 public:
-	// Sets default values for this character's properties
-	ANewVrPawn();
+    ANewVrPawn();
+    virtual void Tick(float DeltaTime) override;
+    virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
 protected:
-	// Called when the game starts or when spawned
-	virtual void BeginPlay() override;
-
+    virtual void BeginPlay() override;
 
 public:
-	// Called every frame
-	virtual void Tick(float DeltaTime) override;
 
-	// Called to bind functionality to input
-	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+    /** Auto-detected camera on pawn */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "VR")
+    UCameraComponent* CameraRef;
 
-	UFUNCTION(BlueprintCallable, Category = "VR Input")
-	void MovePlayer(FVector2D MovementVector);
+    /** Input mapping context */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+    UInputMappingContext* DefaultMappingContext;
 
-	UFUNCTION(BlueprintCallable, Category = "VR Input")
-	void TurnPlayer(float TurnValue);
+    /** Move action (left stick) */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+    UInputAction* MoveAction;
 
+    /** Turn action (right stick X axis) */
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+    UInputAction* TurnAction;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "VR")
-	class UCameraComponent* CameraRef;
+    /** Movement handler */
+    UFUNCTION()
+    void MovePlayer(const FInputActionValue& Value);
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "VR|Brain")
-	ABrainRigActor* BrainRig;
-
+    /** Turning handler */
+    UFUNCTION()
+    void TurnPlayer(const FInputActionValue& Value);
 };

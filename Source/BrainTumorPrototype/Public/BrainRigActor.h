@@ -4,7 +4,7 @@
 #include "GameFramework/Actor.h"
 #include "BrainRigActor.generated.h"
 
-// Forward declaration (prevents include loops)
+// Forward declarations
 class AProceduralObjActor;
 class UMaterialInstanceDynamic;
 
@@ -20,47 +20,55 @@ protected:
     virtual void BeginPlay() override;
 
 private:
-
-
     void DetectExistingActors();
-
-    void FindRigActor();
 
 public:
 
-
-    // Full brain mesh
+    // ----------------------------
+    // Full brain & tumor actors
+    // ----------------------------
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Brain Rig")
-    AProceduralObjActor* BrainActor;
+    AProceduralObjActor* BrainActor = nullptr;
 
-    // Tumor mesh
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Brain Rig")
-    AProceduralObjActor* TumorActor;
+    AProceduralObjActor* TumorActor = nullptr;
 
-    // Axial/Sagittal/Coronal slices (one active at a time)
+    // ----------------------------
+    // Slice actors
+    // ----------------------------
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Brain Rig")
-    AProceduralObjActor* HalfBrainActor;
+    AProceduralObjActor* AxialSliceActor = nullptr;
 
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Brain Rig")
+    AProceduralObjActor* CoronalSliceActor = nullptr;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Brain Rig")
+    AProceduralObjActor* SagittalSliceActor = nullptr;
+
+    // Active slice currently shown
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Brain Rig")
+    AProceduralObjActor* ActiveSlice = nullptr;
+
+    // Material Instances (optional)
+    UPROPERTY()
+    UMaterialInstanceDynamic* BrainMID = nullptr;
 
     UPROPERTY()
-    UMaterialInstanceDynamic* BrainMID;
+    UMaterialInstanceDynamic* TumorMID = nullptr;
 
-    UPROPERTY()
-    UMaterialInstanceDynamic* TumorMID;
+    // ----------------------------
+    // Blueprint callable controls
+    // ----------------------------
 
-    UPROPERTY()
-    UMaterialInstanceDynamic* HalfBrainMID;
-
-
-    // Toggle tumor visibility ON/OFF
+    /** Toggle tumor visibility */
     UFUNCTION(BlueprintCallable, Category = "Brain Controls")
     void ToggleTumorVisibility(bool bVisible);
 
-    // Show a selected half-brain slice (axial, coronal, sagittal)
+    /** Show slice (axial/coronal/sagittal) */
     UFUNCTION(BlueprintCallable, Category = "Brain Controls")
     void ShowHalfBrainSlice(AProceduralObjActor* NewSlice);
 
-    // Return to full brain (hide slice)
+    /** Hide slice & show full brain */
     UFUNCTION(BlueprintCallable, Category = "Brain Controls")
     void ShowFullBrain();
 };

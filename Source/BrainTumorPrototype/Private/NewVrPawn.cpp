@@ -1,72 +1,135 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "NewVrPawn.h"
-#include "BrainRigActor.h"
-#include "MotionControllerComponent.h"
-#include "InputActionValue.h"
-#include "EnhancedInputSubsystems.h"
-#include "Kismet/GameplayStatics.h"
 #include "Camera/CameraComponent.h"
+#include "EnhancedInputSubsystems.h"
 #include "EnhancedInputComponent.h"
-
+#include "InputAction.h"
+#include "InputMappingContext.h"
 
 ANewVrPawn::ANewVrPawn()
 {
- 	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = true;
+    PrimaryActorTick.bCanEverTick = true;
 
+    // Allow yaw rotation from controller stick
+    bUseControllerRotationYaw = true;
+    bUseControllerRotationPitch = false;
+    bUseControllerRotationRoll = false;
 }
 
-// Called when the game starts or when spawned
 void ANewVrPawn::BeginPlay()
 {
-	Super::BeginPlay();
+    Super::BeginPlay();
 
+    // -----------------------------------------
+    // AUTO-DETECT CAMERA COMPONENT
+    // -----------------------------------------
+    if (!CameraRef)
+    {
+        CameraRef = FindComponentByClass<UCameraComponent>();
 
+        if (CameraRef)
+        {
+            UE_LOG(LogTemp, Log,
+                TEXT("NewVrPawn: Auto-detected Camera Component: %s"),
+                *CameraRef->GetName());
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error,
+                TEXT("NewVrPawn: No CameraComponent found! Movement will not use head direction!"));
+        }
+    }
+
+    // -----------------------------------------
+    // SETUP ENHANCED INPUT (Mapping Context)
+    // -----------------------------------------
+    APlayerController* PC = Cast<APlayerController>(GetController());
+    if (!PC) return;
+
+    if (ULocalPlayer* LP = PC->GetLocalPlayer())
+    {
+        if (UEnhancedInputLocalPlayerSubsystem* Subsystem =
+            ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LP))
+        {
+            if (DefaultMappingContext)
+            {
+                Subsystem->AddMappingContext(DefaultMappingContext, 0);
+                UE_LOG(LogTemp, Log, TEXT("Mapping context added."));
+            }
+            else
+            {
+                UE_LOG(LogTemp, Warning, TEXT("DefaultMappingContext is NOT assigned!"));
+            }
+        }
+    }
 }
 
-// Called every frame
 void ANewVrPawn::Tick(float DeltaTime)
 {
-	Super::Tick(DeltaTime);
-
+    Super::Tick(DeltaTime);
 }
 
-// Called to bind functionality to input
 void ANewVrPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
-	Super::SetupPlayerInputComponent(PlayerInputComponent);
+    Super::SetupPlayerInputComponent(PlayerInputComponent);
 
+    if (UEnhancedInputComponent* EI = Cast<UEnhancedInputComponent>(PlayerInputComponent))
+    {
+        // MOVE
+        if (MoveAction)
+        {
+            EI->BindAction(
+                MoveAction,
+                ETriggerEvent::Triggered,
+                this,
+                &ANewVrPawn::MovePlayer
+            );
+        }
+
+        // TURN
+        if (TurnAction)
+        {
+            EI->BindAction(
+                TurnAction,
+                ETriggerEvent::Triggered,
+                this,
+                &ANewVrPawn::TurnPlayer
+            );
+        }
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("EnhancedInputComponent not found!"));
+    }
 }
 
-// Function to handle movement input
-void ANewVrPawn::MovePlayer(FVector2D MovementVector)
+void ANewVrPawn::MovePlayer(const FInputActionValue& Value)
 {
-	if (!Controller || MovementVector.IsNearlyZero()) return;
+    FVector2D Input = Value.Get<FVector2D>();
+    if (Input.IsNearlyZero()) return;
 
-	if (!CameraRef)
-	{
-		UE_LOG(LogTemp, Error, TEXT("CameraRef is null in MovePlayer!"));
-		return;
-	}
-	
-	const FRotator YawRotation(0.f, CameraRef->GetComponentRotation().Yaw, 0.f);
-	const FVector Forward = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-	const FVector Right = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+    if (!CameraRef)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("CameraRef still null in MovePlayer"));
+        return;
+    }
 
-	AddMovementInput(Forward, MovementVector.Y);
-	AddMovementInput(Right, MovementVector.X);
-	UE_LOG(LogTemp, Warning, TEXT("Thumbstick X: %f, Y: %f"), MovementVector.X, MovementVector.Y);
+    const float Yaw = CameraRef->GetComponentRotation().Yaw;
+    const FRotator HeadYaw(0.f, Yaw, 0.f);
+
+    const FVector Forward = FRotationMatrix(HeadYaw).GetUnitAxis(EAxis::X);
+    const FVector Right = FRotationMatrix(HeadYaw).GetUnitAxis(EAxis::Y);
+
+    AddMovementInput(Forward, Input.Y);
+    AddMovementInput(Right, Input.X);
 }
 
-// Function to handle turning input
-void ANewVrPawn::TurnPlayer(float TurnValue)
+void ANewVrPawn::TurnPlayer(const FInputActionValue& Value)
 {
-	const float TurnSensitivity = 5.0f;
+    float Input = Value.Get<float>();
+    const float TurnSensitivity = 5.0f;
 
-	if (FMath::Abs(TurnValue) > KINDA_SMALL_NUMBER)
-	{
-		AddControllerYawInput(TurnValue * TurnSensitivity);
-	}
+    if (FMath::Abs(Input) > KINDA_SMALL_NUMBER)
+    {
+        AddControllerYawInput(Input * TurnSensitivity);
+    }
 }
