@@ -37,13 +37,13 @@ public:
     // Slice actors
     // ----------------------------
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Brain Rig")
-    AProceduralObjActor* AxialSliceActor = nullptr;
+    AProceduralObjActor* AxialActor = nullptr;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Brain Rig")
-    AProceduralObjActor* CoronalSliceActor = nullptr;
+    AProceduralObjActor* CoronalActor = nullptr;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Brain Rig")
-    AProceduralObjActor* SagittalSliceActor = nullptr;
+    AProceduralObjActor* SagittalActor = nullptr;
 
     // Active slice currently shown
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Brain Rig")
@@ -60,9 +60,24 @@ public:
     // Blueprint callable controls
     // ----------------------------
 
+    UFUNCTION(BlueprintCallable, Category = "Brain Controls")
+    void RotateRight();
+
+    UFUNCTION(BlueprintCallable, Category = "Brain Controls")
+    void RotateLeft();
+
     /** Toggle tumor visibility */
     UFUNCTION(BlueprintCallable, Category = "Brain Controls")
     void ToggleTumorVisibility(bool bVisible);
+
+    UFUNCTION(BlueprintCallable, Category = "Brain Controls")
+    void ShowAxialSlice();
+
+    UFUNCTION(BlueprintCallable, Category = "Brain Controls")
+    void ShowCoronalSlice();
+
+    UFUNCTION(BlueprintCallable, Category = "Brain Controls")
+    void ShowSagittalSlice();
 
     /** Show slice (axial/coronal/sagittal) */
     UFUNCTION(BlueprintCallable, Category = "Brain Controls")
@@ -70,5 +85,5 @@ public:
 
     /** Hide slice & show full brain */
     UFUNCTION(BlueprintCallable, Category = "Brain Controls")
-    void ShowFullBrain();
+    void ShowFullBrain(AProceduralObjActor* NewSlice);
 };

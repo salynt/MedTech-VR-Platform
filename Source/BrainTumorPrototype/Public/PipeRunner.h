@@ -4,6 +4,7 @@
 #include "GameFramework/Actor.h"
 
 // These headers define FHttpRequestPtr / FHttpResponsePtr typedefs
+#include "HttpModule.h"
 #include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
 
@@ -12,12 +13,6 @@
 class AProceduralObjActor;
 class UMaterialInterface;
 
-/**
- * APipeRunner
- * UE 5.4-safe HTTP runner that:
- *  - POSTs to /pipeline/run on BeginPlay
- *  - Downloads brain.obj and tumor.obj on success
- */
 UCLASS()
 class BRAINTUMORPROTOTYPE_API APipeRunner : public AActor
 {
@@ -25,7 +20,6 @@ class BRAINTUMORPROTOTYPE_API APipeRunner : public AActor
 
 public:
     APipeRunner();
-
 
     // =====================================================
     //  MESH ACTOR REFERENCES (brain, tumor, slices)
@@ -53,12 +47,14 @@ public:
     //  MATERIAL REFERENCES (OPTIONAL)
     // =====================================================
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Materials")
-    UMaterialInterface* BrainMaterial;
+    UMaterialInterface* BrainMaterial = nullptr;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Materials")
-    UMaterialInterface* TumorMaterial;
+    UMaterialInterface* TumorMaterial = nullptr;
 
-	// =====================================================
+    // =====================================================
+    //  BRAIN POSITION (OPTIONAL OFFSET / ROTATION)
+    // =====================================================
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Brain Position")
     FVector BrainDestination = FVector(0.f, 0.f, 120.f);
 
@@ -71,22 +67,32 @@ public:
     UFUNCTION(BlueprintCallable)
     void DeleteSavedMeshes();
 
-
 protected:
     virtual void BeginPlay() override;
-    virtual void Tick(float DelatTime) override;
+    virtual void Tick(float DeltaTime) override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
-
 private:
+    // Pipeline -> Unreal
     void RunPipeline();
     void OnPipelineResponse(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bWasSuccessful);
-    void DownloadMesh(const FString& Url, const FString& SavePath);
 
+    // Downloading mesh files
+    void DownloadMesh(const FString& Url, const FString& SavePath);
+    void OnMeshDownloaded(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bWasSuccessful, FString SavePath);
+
+    // Spawn into scene
     void SpawnMeshesFromSaved();
 
     bool bMeshesSpawned = false;
-    bool IsBackendReady();
-    void CheckBackendHealth();
 
+    int32 PendingDownloads = 0;
+    bool bPipelineCompleted = false;
+
+    // Local saved .obj paths
+    FString BrainPath;
+    FString TumorPath;
+    FString AxialBottomPath;
+    FString CoronalFrontPath;
+    FString SagittalRightPath;
 };

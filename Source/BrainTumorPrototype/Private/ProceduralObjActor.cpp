@@ -14,7 +14,6 @@ AProceduralObjActor::AProceduralObjActor()
     ProcMesh->SetCastShadow(true);
 }
 
-
 void AProceduralObjActor::BuildFromLoadedMesh(
     const TArray<FVector>& Vertices,
     const TArray<int32>& Triangles
@@ -23,7 +22,7 @@ void AProceduralObjActor::BuildFromLoadedMesh(
     TArray<FVector> Normals;
     TArray<FVector2D> UV0;
     TArray<FProcMeshTangent> Tangents;
-    TArray<FLinearColor> Colors;  
+    TArray<FLinearColor> Colors;
 
     // --- Generate simple UVs ---
     UV0.SetNum(Vertices.Num());
@@ -40,24 +39,30 @@ void AProceduralObjActor::BuildFromLoadedMesh(
 
     // --- Generate Normals + Tangents ---
     UKismetProceduralMeshLibrary::CalculateTangentsForMesh(
-        Vertices,      
-        Triangles,     
+        Vertices,
+        Triangles,
         UV0,
         Normals,
-        Tangents      
+        Tangents
     );
 
-
+    // Create section 0
     ProcMesh->CreateMeshSection_LinearColor(
         0,
         Vertices,
         Triangles,
         Normals,
         UV0,
-        Colors,   
+        Colors,
         Tangents,
         true
     );
+
+    // Make sure material slot 0 exists so SetMaterial / MID index 0 is always valid
+    if (ProcMesh->GetNumMaterials() == 0)
+    {
+        ProcMesh->SetMaterial(0, nullptr);
+    }
 
     // Enable lighting & collision behavior
     ProcMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);

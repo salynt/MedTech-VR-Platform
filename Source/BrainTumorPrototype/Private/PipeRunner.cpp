@@ -1,491 +1,389 @@
 #include "PipeRunner.h"
-#include "ProceduralObjActor.h"
-#include "ObjMeshLoader.h"
 #include "BrainRigActor.h"
+#include "ProceduralObjActor.h"
+#include "EngineUtils.h"
+#include "ObjMeshLoader.h"
 
+#include "Engine/World.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "Kismet/GameplayStatics.h"
+#include "Json.h"
+#include "JsonUtilities.h"
 #include "HttpModule.h"
 #include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
-#include "Json.h"
-#include "JsonUtilities.h"
-#include "Misc/FileHelper.h"
 #include "HAL/PlatformFilemanager.h"
-#include "Misc/Paths.h"
-#include "EngineUtils.h" // for TActorIterator
+#include "Materials/MaterialInstanceDynamic.h"
 
 APipeRunner::APipeRunner()
 {
     PrimaryActorTick.bCanEverTick = true;
 
-    // Auto-load brain material
-    static ConstructorHelpers::FObjectFinder<UMaterialInterface> BrainMat(
+    PendingDownloads = 0;
+    bPipelineCompleted = false;
+    bMeshesSpawned = false;
+
+    BrainActor = nullptr;
+    TumorActor = nullptr;
+    AxialActor = nullptr;
+    CoronalActor = nullptr;
+    SagittalActor = nullptr;
+
+    // =============================================
+    // AUTO-LOAD MATERIALS (WORKING PATHS)
+    // =============================================
+
+    // Brain: /Script/Engine.Material'/Game/Materials/M_BrainGray.M_BrainGray'
+    static ConstructorHelpers::FObjectFinder<UMaterialInterface> BrainMatFinder(
         TEXT("Material'/Game/Materials/M_BrainGray.M_BrainGray'")
     );
-    if (BrainMat.Succeeded())
+    if (BrainMatFinder.Succeeded())
     {
-        BrainMaterial = BrainMat.Object;
+        BrainMaterial = BrainMatFinder.Object;
+        UE_LOG(LogTemp, Log, TEXT("Loaded BrainMaterial: M_BrainGray"));
+    }
+    else
+    {
+        BrainMaterial = nullptr;
+        UE_LOG(LogTemp, Error, TEXT("FAILED to load BrainMaterial. Check M_BrainGray path."));
     }
 
-    // Auto-load tumor material
-    static ConstructorHelpers::FObjectFinder<UMaterialInterface> TumorMat(
+    // Tumor: /Script/Engine.Material'/Game/Materials/M_TumorRed.M_TumorRed'
+    static ConstructorHelpers::FObjectFinder<UMaterialInterface> TumorMatFinder(
         TEXT("Material'/Game/Materials/M_TumorRed.M_TumorRed'")
     );
-    if (TumorMat.Succeeded())
+    if (TumorMatFinder.Succeeded())
     {
-        TumorMaterial = TumorMat.Object;
+        TumorMaterial = TumorMatFinder.Object;
+        UE_LOG(LogTemp, Log, TEXT("Loaded TumorMaterial: M_TumorRed"));
+    }
+    else
+    {
+        TumorMaterial = nullptr;
+        UE_LOG(LogTemp, Error, TEXT("FAILED to load TumorMaterial. Check M_TumorRed path."));
     }
 }
 
 void APipeRunner::BeginPlay()
 {
     Super::BeginPlay();
-    RunPipeline();
 
-    /*
-    // Old backend-launch code omitted for clarity
-    CheckBackendHealth();
-    */
+    // Kick off the backend pipeline
+    RunPipeline();
 }
 
 void APipeRunner::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
-
-    // Only spawn once
-    if (!bMeshesSpawned)
-    {
-        const FString BrainPath = FPaths::ProjectSavedDir() / TEXT("brain.obj");
-        const FString TumorPath = FPaths::ProjectSavedDir() / TEXT("tumor.obj");
-
-        // Wait until both exist
-        if (FPaths::FileExists(BrainPath) && FPaths::FileExists(TumorPath))
-        {
-            UE_LOG(LogTemp, Warning, TEXT("PipeRunner: OBJ files detected! Spawning actors..."));
-
-            SpawnMeshesFromSaved();
-            bMeshesSpawned = true;
-        }
-    }
 }
 
 void APipeRunner::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
     Super::EndPlay(EndPlayReason);
 
-    UE_LOG(LogTemp, Warning, TEXT("PipeRunner::EndPlay called — cleaning up meshes."));
-
+    UE_LOG(LogTemp, Warning, TEXT("PipeRunner::EndPlay – cleaning up meshes."));
     ClearMeshes();
     DeleteSavedMeshes();
 }
 
+//////////////////////////////////////////////////////////////////////////
+// PIPELINE START
+//////////////////////////////////////////////////////////////////////////
 
 void APipeRunner::RunPipeline()
 {
-    UE_LOG(LogTemp, Warning, TEXT("PipeRunner: Running FastAPI Pipeline..."));
+    TSharedRef<IHttpRequest> Req = FHttpModule::Get().CreateRequest();
+    Req->SetURL(TEXT("http://127.0.0.1:8000/pipeline/run"));
+    Req->SetVerb(TEXT("POST"));
+    Req->OnProcessRequestComplete().BindUObject(this, &APipeRunner::OnPipelineResponse);
+    Req->SetTimeout(180.0f);
+    Req->ProcessRequest();
 
-    TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request =
-        FHttpModule::Get().CreateRequest();
-
-    Request->SetURL(TEXT("http://127.0.0.1:8000/pipeline/run"));
-    Request->SetVerb(TEXT("POST"));
-    Request->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
-
-    Request->OnProcessRequestComplete().BindUObject(
-        this, &APipeRunner::OnPipelineResponse
-    );
-
-    Request->ProcessRequest();
+    UE_LOG(LogTemp, Log, TEXT("PipeRunner: Pipeline request started."));
 }
+
+//////////////////////////////////////////////////////////////////////////
+// PIPELINE RESPONSE
+//////////////////////////////////////////////////////////////////////////
 
 void APipeRunner::OnPipelineResponse(
     FHttpRequestPtr Request,
     FHttpResponsePtr Response,
     bool bWasSuccessful)
 {
-    if (!Response.IsValid())
+    if (!bWasSuccessful || !Response.IsValid())
     {
         UE_LOG(LogTemp, Error, TEXT("Pipeline request failed: invalid response object."));
         return;
     }
 
-    const int32 Code = Response->GetResponseCode();
     const FString Body = Response->GetContentAsString();
+    UE_LOG(LogTemp, Warning, TEXT("Pipeline Response: %s"), *Body);
 
-    UE_LOG(LogTemp, Warning, TEXT("Pipeline HTTP result: SuccessFlag=%s, Code=%d"),
-        bWasSuccessful ? TEXT("true") : TEXT("false"),
-        Code);
-    UE_LOG(LogTemp, Warning, TEXT("Pipeline Response Body: %s"), *Body);
+    TSharedPtr<FJsonObject> Json;
+    TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Body);
 
-    if (Code < 200 || Code >= 300)
+    if (!FJsonSerializer::Deserialize(Reader, Json) || !Json.IsValid())
     {
-        UE_LOG(LogTemp, Error, TEXT("Pipeline HTTP error: %d"), Code);
+        UE_LOG(LogTemp, Error, TEXT("Pipeline JSON parse failed."));
         return;
     }
 
-    // Parse JSON
-    TSharedPtr<FJsonObject> JsonObject;
-    const TSharedRef<TJsonReader<>> Reader =
-        TJsonReaderFactory<>::Create(Body);
-
-    if (!FJsonSerializer::Deserialize(Reader, JsonObject) || !JsonObject.IsValid())
-    {
-        UE_LOG(LogTemp, Error, TEXT("JSON parsing failed for pipeline response."));
-        return;
-    }
-
-    // Handle status field from backend
     FString Status;
-    if (JsonObject->TryGetStringField(TEXT("status"), Status))
+    Json->TryGetStringField(TEXT("status"), Status);
+    if (!Status.Equals(TEXT("success"), ESearchCase::IgnoreCase))
     {
-        if (!Status.Equals(TEXT("success"), ESearchCase::IgnoreCase))
+        UE_LOG(LogTemp, Error, TEXT("Pipeline reported non-success status: %s"), *Status);
+        return;
+    }
+
+    // Local save paths in /Saved
+    BrainPath = FPaths::ProjectSavedDir() / TEXT("brain.obj");
+    TumorPath = FPaths::ProjectSavedDir() / TEXT("tumor.obj");
+    AxialBottomPath = FPaths::ProjectSavedDir() / TEXT("axial_bottom.obj");
+    CoronalFrontPath = FPaths::ProjectSavedDir() / TEXT("coronal_front.obj");
+    SagittalRightPath = FPaths::ProjectSavedDir() / TEXT("sagittal_right.obj");
+
+    bPipelineCompleted = true;
+    PendingDownloads = 0;
+
+    auto StartDownload = [&](const TCHAR* JsonKey, const FString& SaveLoc)
         {
-            FString Msg;
-            JsonObject->TryGetStringField(TEXT("message"), Msg);
-            UE_LOG(LogTemp, Error, TEXT("Pipeline reported error: %s"), *Msg);
-            return;
-        }
-    }
+            FString Url;
+            if (Json->TryGetStringField(JsonKey, Url))
+            {
+                DownloadMesh(Url, SaveLoc);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Error, TEXT("Pipeline JSON missing '%s' field."), JsonKey);
+            }
+        };
 
-    FString BrainUrl;
-    FString TumorUrl;
-    FString AxialTopUrl;
-    FString AxialBottomUrl;
-    FString CoronalFrontUrl;
-    FString CoronalBackUrl;
-    FString SagittalLeftUrl;
-    FString SagittalRightUrl;
-
-    if (!JsonObject->TryGetStringField(TEXT("brain_mesh"), BrainUrl))
-    {
-        UE_LOG(LogTemp, Error, TEXT("Pipeline JSON missing 'brain_mesh' field."));
-        return;
-    }
-    if (!JsonObject->TryGetStringField(TEXT("tumor_mesh"), TumorUrl))
-    {
-        UE_LOG(LogTemp, Error, TEXT("Pipeline JSON missing 'tumor_mesh' field."));
-        return;
-    }
-    if (!JsonObject->TryGetStringField(TEXT("axial_top"), AxialTopUrl))
-    {
-        UE_LOG(LogTemp, Error, TEXT("Pipeline JSON missing 'axial_top' field."));
-        return;
-    }
-    if (!JsonObject->TryGetStringField(TEXT("axial_bottom"), AxialBottomUrl))
-    {
-        UE_LOG(LogTemp, Error, TEXT("Pipeline JSON missing 'axial_bottom' field."));
-        return;
-    }
-    if (!JsonObject->TryGetStringField(TEXT("coronal_front"), CoronalFrontUrl))
-    {
-        UE_LOG(LogTemp, Error, TEXT("Pipeline JSON missing 'coronal_front' field."));
-        return;
-    }
-    if (!JsonObject->TryGetStringField(TEXT("coronal_back"), CoronalBackUrl))
-    {
-        UE_LOG(LogTemp, Error, TEXT("Pipeline JSON missing 'coronal_back' field."));
-        return;
-    }
-    if (!JsonObject->TryGetStringField(TEXT("sagittal_left"), SagittalLeftUrl))
-    {
-        UE_LOG(LogTemp, Error, TEXT("Pipeline JSON missing 'sagittal_left' field."));
-        return;
-    }
-    if (!JsonObject->TryGetStringField(TEXT("sagittal_right"), SagittalRightUrl))
-    {
-        UE_LOG(LogTemp, Error, TEXT("Pipeline JSON missing 'sagittal_right' field."));
-        return;
-    }
-
-    const FString SaveBrain = FPaths::ProjectSavedDir() / TEXT("brain.obj");
-    const FString SaveTumor = FPaths::ProjectSavedDir() / TEXT("tumor.obj");
-    const FString SaveHalf_AxialBottom = FPaths::ProjectSavedDir() / TEXT("axial_bottom.obj");
-    const FString SaveHalf_CoronalFront = FPaths::ProjectSavedDir() / TEXT("coronal_front.obj");
-    const FString SaveHalf_SagittalRight = FPaths::ProjectSavedDir() / TEXT("sagittal_right.obj");
-
-    DownloadMesh(BrainUrl, SaveBrain);
-    DownloadMesh(TumorUrl, SaveTumor);
-    DownloadMesh(AxialBottomUrl, SaveHalf_AxialBottom);
-    DownloadMesh(CoronalFrontUrl, SaveHalf_CoronalFront);
-    DownloadMesh(SagittalRightUrl, SaveHalf_SagittalRight);
+    StartDownload(TEXT("brain_mesh"), BrainPath);
+    StartDownload(TEXT("tumor_mesh"), TumorPath);
+    StartDownload(TEXT("axial_bottom"), AxialBottomPath);
+    StartDownload(TEXT("coronal_front"), CoronalFrontPath);
+    StartDownload(TEXT("sagittal_right"), SagittalRightPath);
 }
+
+//////////////////////////////////////////////////////////////////////////
+// MESH DOWNLOAD HANDLING
+//////////////////////////////////////////////////////////////////////////
 
 void APipeRunner::DownloadMesh(const FString& Url, const FString& SavePath)
 {
     if (Url.IsEmpty())
     {
-        UE_LOG(LogTemp, Warning, TEXT("Download skipped: empty URL"));
+        UE_LOG(LogTemp, Error, TEXT("DownloadMesh: empty URL for %s"), *SavePath);
         return;
     }
 
-    TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request =
-        FHttpModule::Get().CreateRequest();
+    PendingDownloads++;
 
-    Request->SetURL(Url);
-    Request->SetVerb(TEXT("GET"));
+    TSharedRef<IHttpRequest> Req = FHttpModule::Get().CreateRequest();
+    Req->SetURL(Url);
+    Req->SetVerb(TEXT("GET"));
 
-    Request->OnProcessRequestComplete().BindLambda(
-        [SavePath](FHttpRequestPtr Req, FHttpResponsePtr Resp, bool bWasSuccessful)
-        {
-            if (bWasSuccessful && Resp.IsValid())
-            {
-                const bool bSaved =
-                    FFileHelper::SaveArrayToFile(Resp->GetContent(), *SavePath);
-
-                if (bSaved)
-                {
-                    UE_LOG(LogTemp, Warning, TEXT("Downloaded: %s"), *SavePath);
-                }
-                else
-                {
-                    UE_LOG(LogTemp, Error, TEXT("Failed to save: %s"), *SavePath);
-                }
-            }
-            else
-            {
-                UE_LOG(LogTemp, Error, TEXT("Failed to download: %s"), *SavePath);
-            }
-        }
+    Req->OnProcessRequestComplete().BindUObject(
+        this,
+        &APipeRunner::OnMeshDownloaded,
+        SavePath
     );
 
-    Request->ProcessRequest();
+    Req->SetTimeout(120.0f);
+    Req->ProcessRequest();
+
+    UE_LOG(LogTemp, Log, TEXT("Downloading %s -> %s"), *Url, *SavePath);
 }
+
+void APipeRunner::OnMeshDownloaded(
+    FHttpRequestPtr Request,
+    FHttpResponsePtr Response,
+    bool bWasSuccessful,
+    FString SavePath)
+{
+    if (!bWasSuccessful || !Response.IsValid())
+    {
+        UE_LOG(LogTemp, Error, TEXT("Failed downloading %s"), *SavePath);
+    }
+    else
+    {
+        if (FFileHelper::SaveArrayToFile(Response->GetContent(), *SavePath))
+        {
+            UE_LOG(LogTemp, Warning, TEXT("Saved mesh file: %s"), *SavePath);
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("Failed to save mesh file: %s"), *SavePath);
+        }
+    }
+
+    PendingDownloads--;
+
+    if (PendingDownloads <= 0 && bPipelineCompleted && !bMeshesSpawned)
+    {
+        bMeshesSpawned = true;
+        UE_LOG(LogTemp, Warning, TEXT("All downloads complete – spawning meshes"));
+        SpawnMeshesFromSaved();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// SPAWN INTO WORLD
+//////////////////////////////////////////////////////////////////////////
 
 void APipeRunner::SpawnMeshesFromSaved()
 {
-    const FString BrainPath = FPaths::ProjectSavedDir() / TEXT("brain.obj");
-    const FString TumorPath = FPaths::ProjectSavedDir() / TEXT("tumor.obj");
-
-    const FString AxialPath = FPaths::ProjectSavedDir() / TEXT("axial_bottom.obj");
-    const FString CoronalPath = FPaths::ProjectSavedDir() / TEXT("coronal_front.obj");
-    const FString SagittalPath = FPaths::ProjectSavedDir() / TEXT("sagittal_right.obj");
+    UE_LOG(LogTemp, Warning, TEXT("Spawning brain + slices into scene"));
 
     UWorld* World = GetWorld();
     if (!World)
     {
-        UE_LOG(LogTemp, Error, TEXT("PipeRunner::SpawnMeshesFromSaved — No World found!"));
+        UE_LOG(LogTemp, Error, TEXT("SpawnMeshesFromSaved: No World!"));
         return;
     }
 
-    // ---------------------------------------------------------
-    // Find Rig
-    // ---------------------------------------------------------
+    // Find the BrainRigActor to parent everything under
     ABrainRigActor* Rig = nullptr;
-
     for (TActorIterator<ABrainRigActor> It(World); It; ++It)
     {
         Rig = *It;
         break;
     }
 
-    if (!IsValid(Rig))
+    if (!Rig)
     {
-        UE_LOG(LogTemp, Error, TEXT("PipeRunner: No BrainRigActor found."));
+        UE_LOG(LogTemp, Error, TEXT("No BrainRigActor found!"));
         return;
     }
 
-    AActor* ParentForMeshes = Rig;
-
-    // ---------------------------------------------------------
-    // Spawn transform = Rig transform
-    // ---------------------------------------------------------
-    FTransform SpawnTransform = Rig->GetActorTransform();
-
-    // ---------------------------------------------------------
-    // Helper: Spawn or reuse mesh actors
-    // ---------------------------------------------------------
-    auto SpawnOrReuse = [&](AProceduralObjActor*& Target, const TCHAR* Label)
+    auto SpawnMesh = [&](const FString& Path,
+        AProceduralObjActor*& OutActor,
+        const TCHAR* Label,
+        UMaterialInterface* Material)
         {
-            if (!IsValid(Target))
-            {
-                Target = World->SpawnActor<AProceduralObjActor>(
-                    AProceduralObjActor::StaticClass(),
-                    SpawnTransform
-                );
+            FLoadedObjMesh Mesh;
 
-                if (!IsValid(Target))
-                {
-                    UE_LOG(LogTemp, Error, TEXT("Failed to spawn: %s"), Label);
-                    return false;
-                }
-
-                Target->SetActorLabel(Label);
-                Target->AttachToActor(Rig, FAttachmentTransformRules::KeepWorldTransform);
-            }
-            else
+            if (!FObjMeshLoader::LoadFromFile(Path, Mesh))
             {
-                Target->AttachToActor(Rig, FAttachmentTransformRules::KeepWorldTransform);
+                UE_LOG(LogTemp, Error, TEXT("Mesh load failed: %s"), *Path);
+                return;
             }
 
-            return true;
+            const FTransform SpawnTransform = Rig->GetActorTransform();
+
+            OutActor = World->SpawnActor<AProceduralObjActor>(
+                AProceduralObjActor::StaticClass(),
+                SpawnTransform
+            );
+
+            if (!OutActor)
+            {
+                UE_LOG(LogTemp, Error, TEXT("Failed to spawn %s"), Label);
+                return;
+            }
+
+            OutActor->SetActorLabel(Label);
+            OutActor->AttachToActor(Rig, FAttachmentTransformRules::KeepWorldTransform);
+
+            // Build mesh FIRST
+            OutActor->BuildFromLoadedMesh(Mesh.Vertices, Mesh.Triangles);
+
+            // Then apply material
+            if (Material && OutActor->ProcMesh)
+            {
+                OutActor->ProcMesh->SetMaterial(0, Material);
+                OutActor->ProcMesh->MarkRenderStateDirty();
+            }
+
+            UE_LOG(LogTemp, Warning, TEXT("Spawned mesh: %s | Materials=%d"),
+                Label,
+                OutActor->ProcMesh ? OutActor->ProcMesh->GetNumMaterials() : -1);
         };
 
-    // =============================================================
-    // BRAIN
-    // =============================================================
+    // Brain
+    SpawnMesh(BrainPath, BrainActor, TEXT("BrainMesh"), BrainMaterial);
+    if (BrainActor)
     {
-        FLoadedObjMesh Mesh;
-        if (FObjMeshLoader::LoadFromFile(BrainPath, Mesh))
-        {
-            if (SpawnOrReuse(BrainActor, TEXT("BrainMesh")))
-            {
-                BrainActor->BuildFromLoadedMesh(Mesh.Vertices, Mesh.Triangles);
-                BrainActor->ProcMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-                BrainActor->ProcMesh->bUseAsyncCooking = true;
-
-                if (BrainMaterial)
-                    BrainActor->ProcMesh->SetMaterial(0, BrainMaterial);
-
-                Rig->BrainActor = BrainActor;
-            }
-        }
+        Rig->BrainActor = BrainActor;
     }
 
-    // =============================================================
-    // TUMOR
-    // =============================================================
+    // Tumor
+    SpawnMesh(TumorPath, TumorActor, TEXT("TumorMesh"), TumorMaterial);
+    if (TumorActor)
     {
-        FLoadedObjMesh Mesh;
-        if (FObjMeshLoader::LoadFromFile(TumorPath, Mesh))
-        {
-            if (SpawnOrReuse(TumorActor, TEXT("TumorMesh")))
-            {
-                TumorActor->BuildFromLoadedMesh(Mesh.Vertices, Mesh.Triangles);
-                TumorActor->ProcMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-                TumorActor->ProcMesh->bUseAsyncCooking = true;
-
-                if (TumorMaterial)
-                    TumorActor->ProcMesh->SetMaterial(0, TumorMaterial);
-
-                Rig->TumorActor = TumorActor;
-            }
-        }
+        Rig->TumorActor = TumorActor;
     }
 
-    // =============================================================
-    // AXIAL SLICE
-    // =============================================================
+    // Axial slice
+    SpawnMesh(AxialBottomPath, AxialActor, TEXT("AxialSlice"), BrainMaterial);
+    if (AxialActor)
     {
-        FLoadedObjMesh Mesh;
-        if (FObjMeshLoader::LoadFromFile(AxialPath, Mesh))
-        {
-            if (SpawnOrReuse(AxialActor, TEXT("AxialSlice")))
-            {
-                AxialActor->BuildFromLoadedMesh(Mesh.Vertices, Mesh.Triangles);
-                AxialActor->SetActorHiddenInGame(true);
-
-                if (BrainMaterial)
-                    AxialActor->ProcMesh->SetMaterial(0, BrainMaterial);
-
-                Rig->AxialSliceActor = AxialActor;
-            }
-        }
+        Rig->AxialActor = AxialActor;
+        AxialActor->SetActorHiddenInGame(true);
     }
 
-    // =============================================================
-    // CORONAL SLICE
-    // =============================================================
+    // Coronal slice
+    SpawnMesh(CoronalFrontPath, CoronalActor, TEXT("CoronalSlice"), BrainMaterial);
+    if (CoronalActor)
     {
-        FLoadedObjMesh Mesh;
-        if (FObjMeshLoader::LoadFromFile(CoronalPath, Mesh))
-        {
-            if (SpawnOrReuse(CoronalActor, TEXT("CoronalSlice")))
-            {
-                CoronalActor->BuildFromLoadedMesh(Mesh.Vertices, Mesh.Triangles);
-                CoronalActor->SetActorHiddenInGame(true);
-
-                if (BrainMaterial)
-                    CoronalActor->ProcMesh->SetMaterial(0, BrainMaterial);
-
-                Rig->CoronalSliceActor = CoronalActor;
-            }
-        }
+        Rig->CoronalActor = CoronalActor;
+        CoronalActor->SetActorHiddenInGame(true);
     }
 
-    // =============================================================
-    // SAGITTAL SLICE
-    // =============================================================
+    // Sagittal slice
+    SpawnMesh(SagittalRightPath, SagittalActor, TEXT("SagittalSlice"), BrainMaterial);
+    if (SagittalActor)
     {
-        FLoadedObjMesh Mesh;
-        if (FObjMeshLoader::LoadFromFile(SagittalPath, Mesh))
-        {
-            if (SpawnOrReuse(SagittalActor, TEXT("SagittalSlice")))
-            {
-                SagittalActor->BuildFromLoadedMesh(Mesh.Vertices, Mesh.Triangles);
-                SagittalActor->SetActorHiddenInGame(true);
-
-                if (BrainMaterial)
-                    SagittalActor->ProcMesh->SetMaterial(0, BrainMaterial);
-
-                Rig->SagittalSliceActor = SagittalActor;
-            }
-        }
+        Rig->SagittalActor = SagittalActor;
+        SagittalActor->SetActorHiddenInGame(true);
     }
 
-    UE_LOG(LogTemp, Warning, TEXT("PipeRunner: All meshes spawned + assigned to BrainRigActor."));
+    // =====================================================
+    // Create dynamic material instances on the Rig
+    // (guarded so we don't get index warnings)
+    // =====================================================
+    if (Rig->BrainActor && Rig->BrainActor->ProcMesh &&
+        Rig->BrainActor->ProcMesh->GetNumMaterials() > 0)
+    {
+        Rig->BrainMID = Rig->BrainActor->ProcMesh->CreateAndSetMaterialInstanceDynamic(0);
+        UE_LOG(LogTemp, Log, TEXT("BrainMID created in PipeRunner."));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("BrainMID not created – no material slot 0."));
+    }
+
+    if (Rig->TumorActor && Rig->TumorActor->ProcMesh &&
+        Rig->TumorActor->ProcMesh->GetNumMaterials() > 0)
+    {
+        Rig->TumorMID = Rig->TumorActor->ProcMesh->CreateAndSetMaterialInstanceDynamic(0);
+        UE_LOG(LogTemp, Log, TEXT("TumorMID created in PipeRunner."));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("TumorMID not created – no material slot 0."));
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("Meshes spawned successfully."));
 }
 
-void APipeRunner::CheckBackendHealth()
-{
-    if (IsBackendReady())
-    {
-        UE_LOG(LogTemp, Warning, TEXT("Backend is ready! Running pipeline..."));
-        RunPipeline();
-        return;
-    }
-
-    UE_LOG(LogTemp, Warning, TEXT("Backend not ready yet... retrying"));
-
-    // Try again after 1 second
-    FTimerHandle RetryHandle;
-    GetWorld()->GetTimerManager().SetTimer(
-        RetryHandle,
-        this,
-        &APipeRunner::CheckBackendHealth,
-        1.0f,
-        false
-    );
-}
-
-bool APipeRunner::IsBackendReady()
-{
-    TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request =
-        FHttpModule::Get().CreateRequest();
-
-    Request->SetURL("http://127.0.0.1:8000/health");
-    Request->SetVerb("GET");
-
-    bool bReady = false;
-
-    Request->OnProcessRequestComplete().BindLambda(
-        [&bReady](FHttpRequestPtr Req, FHttpResponsePtr Resp, bool bSuccess)
-        {
-            if (bSuccess && Resp.IsValid() && Resp->GetResponseCode() == 200)
-            {
-                bReady = true;
-            }
-        }
-    );
-
-    Request->ProcessRequest();
-
-    // Give async loop time to complete
-    FPlatformProcess::Sleep(0.15f);
-
-    return bReady;
-}
+//////////////////////////////////////////////////////////////////////////
+// CLEANUP
+//////////////////////////////////////////////////////////////////////////
 
 void APipeRunner::DeleteSavedMeshes()
 {
-    FString SavedDir = FPaths::ProjectSavedDir();
+    const FString SavedDir = FPaths::ProjectSavedDir();
     IPlatformFile& FileManager = FPlatformFileManager::Get().GetPlatformFile();
 
     UE_LOG(LogTemp, Warning, TEXT("PipeRunner: Deleting OBJ mesh files in %s"), *SavedDir);
 
-    // Find all OBJ files inside Saved/
     TArray<FString> FoundFiles;
     FileManager.FindFiles(FoundFiles, *SavedDir, TEXT("obj"));
 
-    // Delete each OBJ file
     for (const FString& FileName : FoundFiles)
     {
         const FString FullPath = SavedDir / FileName;
@@ -505,7 +403,6 @@ void APipeRunner::DeleteSavedMeshes()
 
     UE_LOG(LogTemp, Warning, TEXT("PipeRunner: OBJ cleanup complete."));
 }
-
 
 void APipeRunner::ClearMeshes()
 {
@@ -539,9 +436,7 @@ void APipeRunner::ClearMeshes()
     {
         SagittalActor->Destroy();
         SagittalActor = nullptr;
-
-        UE_LOG(LogTemp, Warning, TEXT("PipeRunner: Mesh actors cleared."));
     }
+
+    UE_LOG(LogTemp, Warning, TEXT("PipeRunner: Mesh actors cleared."));
 }
-
-
