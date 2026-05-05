@@ -1,0 +1,22 @@
+# Visual Studio
+.vs/
+*.VC.db
+*.sln
+
+# Unreal generated
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+
+# Build files
+Build/*
+
+# Mac/Linux
+.DS_Store
+
+# Rider
+.idea/
+
+# Logs
+*.log

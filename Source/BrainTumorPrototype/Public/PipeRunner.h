@@ -33,6 +33,15 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Meshes")
     AProceduralObjActor* TumorActor = nullptr;
 
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Meshes")
+    AProceduralObjActor* TumorClass1Actor = nullptr;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Meshes")
+    AProceduralObjActor* TumorClass2Actor = nullptr;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Meshes")
+    AProceduralObjActor* TumorClass3Actor = nullptr;
+
     // Slices
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Meshes")
     AProceduralObjActor* AxialActor = nullptr;
@@ -44,13 +53,23 @@ public:
     AProceduralObjActor* SagittalActor = nullptr;
 
     // =====================================================
-    //  MATERIAL REFERENCES (OPTIONAL)
+    //  MATERIAL REFERENCES
     // =====================================================
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Materials")
     UMaterialInterface* BrainMaterial = nullptr;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Materials")
     UMaterialInterface* TumorMaterial = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Materials")
+    UMaterialInterface* TumorClass1Material = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Materials")
+    UMaterialInterface* TumorClass2Material = nullptr;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Materials")
+    UMaterialInterface* TumorClass3Material = nullptr;
+
 
     // =====================================================
     //  BRAIN POSITION (OPTIONAL OFFSET / ROTATION)
@@ -80,7 +99,6 @@ private:
     // Downloading mesh files
     void DownloadMesh(const FString& Url, const FString& SavePath);
     void OnMeshDownloaded(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bWasSuccessful, FString SavePath);
-
     // Spawn into scene
     void SpawnMeshesFromSaved();
 
@@ -95,4 +113,7 @@ private:
     FString AxialBottomPath;
     FString CoronalFrontPath;
     FString SagittalRightPath;
+    FString TumorClass1Path;
+	FString TumorClass2Path;
+	FString TumorClass3Path;
 };

@@ -29,45 +29,124 @@ APipeRunner::APipeRunner()
     AxialActor = nullptr;
     CoronalActor = nullptr;
     SagittalActor = nullptr;
+    TumorClass1Actor = nullptr;
+    TumorClass2Actor = nullptr;
+	TumorClass3Actor = nullptr;
 
     // =============================================
     // AUTO-LOAD MATERIALS (WORKING PATHS)
     // =============================================
 
-    // Brain: /Script/Engine.Material'/Game/Materials/M_BrainGray.M_BrainGray'
-    static ConstructorHelpers::FObjectFinder<UMaterialInterface> BrainMatFinder(
-        TEXT("Material'/Game/Materials/M_BrainGray.M_BrainGray'")
-    );
-    if (BrainMatFinder.Succeeded())
+    if (HasAnyFlags(RF_ClassDefaultObject))
     {
-        BrainMaterial = BrainMatFinder.Object;
-        UE_LOG(LogTemp, Log, TEXT("Loaded BrainMaterial: M_BrainGray"));
-    }
-    else
-    {
-        BrainMaterial = nullptr;
-        UE_LOG(LogTemp, Error, TEXT("FAILED to load BrainMaterial. Check M_BrainGray path."));
-    }
+        // Brain Material
+        {
+            static ConstructorHelpers::FObjectFinder<UMaterialInterface> BrainMatFinder(
+                TEXT("Material'/Game/Materials/M_BrainGray.M_BrainGray'")
+            );
 
-    // Tumor: /Script/Engine.Material'/Game/Materials/M_TumorRed.M_TumorRed'
-    static ConstructorHelpers::FObjectFinder<UMaterialInterface> TumorMatFinder(
-        TEXT("Material'/Game/Materials/M_TumorRed.M_TumorRed'")
-    );
-    if (TumorMatFinder.Succeeded())
-    {
-        TumorMaterial = TumorMatFinder.Object;
-        UE_LOG(LogTemp, Log, TEXT("Loaded TumorMaterial: M_TumorRed"));
-    }
-    else
-    {
-        TumorMaterial = nullptr;
-        UE_LOG(LogTemp, Error, TEXT("FAILED to load TumorMaterial. Check M_TumorRed path."));
+            if (BrainMatFinder.Succeeded())
+            {
+                BrainMaterial = BrainMatFinder.Object;
+                UE_LOG(LogTemp, Log, TEXT("[PipeRunner] Loaded BrainMaterial: M_BrainGray"));
+            }
+            else
+            {
+                BrainMaterial = nullptr;
+                UE_LOG(LogTemp, Error, TEXT("[PipeRunner] FAILED to load BrainMaterial (M_BrainGray)"));
+            }
+        }
+
+        // Tumor Base Material
+        {
+            static ConstructorHelpers::FObjectFinder<UMaterialInterface> TumorMatFinder(
+                TEXT("Material'/Game/Materials/M_TumorRed.M_Tumor'")
+            );
+
+            if (TumorMatFinder.Succeeded())
+            {
+                TumorMaterial = TumorMatFinder.Object;
+                UE_LOG(LogTemp, Log, TEXT("[PipeRunner] Loaded TumorMaterial: M_Tumor"));
+            }
+            else
+            {
+                TumorMaterial = nullptr;
+                UE_LOG(LogTemp, Error, TEXT("[PipeRunner] FAILED to load TumorMaterial (M_Tumor)"));
+            }
+        }
+
+        // Tumor Class 1 Material
+        {
+            static ConstructorHelpers::FObjectFinder<UMaterialInterface> TumorClass1MatFinder(
+                TEXT("Material'/Game/Materials/M_TumorClass1.M_TumorClass1'")
+            );
+
+            if (TumorClass1MatFinder.Succeeded())
+            {
+                TumorClass1Material = TumorClass1MatFinder.Object;
+                UE_LOG(LogTemp, Log, TEXT("[PipeRunner] Loaded TumorClass1Material: M_TumorClass1"));
+            }
+            else
+            {
+                TumorClass1Material = nullptr;
+                UE_LOG(LogTemp, Error, TEXT("[PipeRunner] FAILED to load TumorClass1Material (M_TumorClass1)"));
+            }
+        }
+
+        // Tumor Class 2 Material
+        {
+            static ConstructorHelpers::FObjectFinder<UMaterialInterface> TumorClass2MatFinder(
+                TEXT("Material'/Game/Materials/M_TumorClass2.M_TumorClass2'")
+            );
+
+            if (TumorClass2MatFinder.Succeeded())
+            {
+                TumorClass2Material = TumorClass2MatFinder.Object;
+                UE_LOG(LogTemp, Log, TEXT("[PipeRunner] Loaded TumorClass2Material: M_TumorClass2"));
+            }
+            else
+            {
+                TumorClass2Material = nullptr;
+                UE_LOG(LogTemp, Error, TEXT("[PipeRunner] FAILED to load TumorClass2Material (M_TumorClass2)"));
+            }
+        }
+
+        // Tumor Class 3 Material
+        {
+            static ConstructorHelpers::FObjectFinder<UMaterialInterface> TumorClass3MatFinder(
+                TEXT("Material'/Game/Materials/M_TumorClass3.M_TumorClass3'")
+            );
+
+            if (TumorClass3MatFinder.Succeeded())
+            {
+                TumorClass3Material = TumorClass3MatFinder.Object;
+                UE_LOG(LogTemp, Log, TEXT("[PipeRunner] Loaded TumorMaterial: M_TumorClass3"));
+            }
+            else
+            {
+                TumorClass3Material = nullptr;
+                UE_LOG(LogTemp, Error, TEXT("[PipeRunner] FAILED to load TumorMaterial (M_Tumor)"));
+            }
+        }
     }
 }
 
 void APipeRunner::BeginPlay()
 {
     Super::BeginPlay();
+
+    BrainMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Materials/M_BrainGray.M_BrainGray"));
+    TumorMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Materials/M_Tumor.M_Tumor"));
+    TumorClass1Material = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Materials/M_TumorClass1.M_TumorClass1"));
+    TumorClass2Material = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Materials/M_TumorClass2.M_TumorClass2"));
+    TumorClass3Material = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Materials/M_TumorClass3.M_TumorClass3"));
+
+
+    UE_LOG(LogTemp, Log, TEXT("[PipeRunner] BrainMaterial: %s"), BrainMaterial ? TEXT("OK") : TEXT("NULL"));
+    UE_LOG(LogTemp, Log, TEXT("[PipeRunner] TumorMaterial: %s"), TumorMaterial ? TEXT("OK") : TEXT("NULL"));
+    UE_LOG(LogTemp, Log, TEXT("[PipeRunner] TumorClass1Material: %s"), TumorClass1Material ? TEXT("OK") : TEXT("NULL"));
+    UE_LOG(LogTemp, Log, TEXT("[PipeRunner] TumorClass2Material: %s"), TumorClass2Material ? TEXT("OK") : TEXT("NULL"));
+    UE_LOG(LogTemp, Log, TEXT("[PipeRunner] TumorClass3Material: %s"), TumorClass3Material ? TEXT("OK") : TEXT("NULL"));
 
     // Kick off the backend pipeline
     RunPipeline();
@@ -144,6 +223,9 @@ void APipeRunner::OnPipelineResponse(
     AxialBottomPath = FPaths::ProjectSavedDir() / TEXT("axial_bottom.obj");
     CoronalFrontPath = FPaths::ProjectSavedDir() / TEXT("coronal_front.obj");
     SagittalRightPath = FPaths::ProjectSavedDir() / TEXT("sagittal_right.obj");
+	TumorClass1Path = FPaths::ProjectSavedDir() / TEXT("tumor_class_1.obj");
+	TumorClass2Path = FPaths::ProjectSavedDir() / TEXT("tumor_class_2.obj");
+    TumorClass3Path = FPaths::ProjectSavedDir() / TEXT("tumor_class_3.obj");
 
     bPipelineCompleted = true;
     PendingDownloads = 0;
@@ -166,6 +248,9 @@ void APipeRunner::OnPipelineResponse(
     StartDownload(TEXT("axial_bottom"), AxialBottomPath);
     StartDownload(TEXT("coronal_front"), CoronalFrontPath);
     StartDownload(TEXT("sagittal_right"), SagittalRightPath);
+	StartDownload(TEXT("tumor_class_1"), TumorClass1Path);
+	StartDownload(TEXT("tumor_class_2"), TumorClass2Path);
+    StartDownload(TEXT("tumor_class_3"), TumorClass3Path);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -341,6 +426,29 @@ void APipeRunner::SpawnMeshesFromSaved()
         SagittalActor->SetActorHiddenInGame(true);
     }
 
+    // Tumor Class 1
+	SpawnMesh(TumorClass1Path, TumorClass1Actor, TEXT("TumorClass1Mesh"), TumorClass1Material);
+    if (TumorClass1Actor)
+    {
+        Rig->TumorClass1Actor = TumorClass1Actor;
+
+    }
+    // Tumor Class 2
+    SpawnMesh(TumorClass2Path, TumorClass2Actor, TEXT("TumorClass2Mesh"), TumorClass2Material);
+    if (TumorClass2Actor)
+    {
+        Rig->TumorClass2Actor = TumorClass2Actor;
+
+    }
+
+    // Tumor Class
+    SpawnMesh(TumorClass3Path, TumorClass3Actor, TEXT("TumorClass3Mesh"), TumorClass3Material);
+    if (TumorClass3Actor)
+    {
+        Rig->TumorClass3Actor = TumorClass3Actor;
+
+    }
+
     // =====================================================
     // Create dynamic material instances on the Rig
     // (guarded so we don't get index warnings)
@@ -436,6 +544,24 @@ void APipeRunner::ClearMeshes()
     {
         SagittalActor->Destroy();
         SagittalActor = nullptr;
+    }
+
+    if (IsValid(TumorClass1Actor))
+    {
+        TumorClass1Actor->Destroy();
+		TumorClass1Actor = nullptr;
+    }
+
+    if (IsValid(TumorClass2Actor))
+    {
+		TumorClass2Actor->Destroy();
+		TumorClass2Actor = nullptr;
+    }
+
+    if (IsValid(TumorClass3Actor))
+    {
+        TumorClass3Actor->Destroy();
+        TumorClass3Actor = nullptr;
     }
 
     UE_LOG(LogTemp, Warning, TEXT("PipeRunner: Mesh actors cleared."));

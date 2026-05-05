@@ -34,8 +34,8 @@ void AProceduralObjActor::BuildFromLoadedMesh(
         );
     }
 
-    static_assert(TIsSame<decltype(Normals)::ElementType, FVector>::Value, "Normals must be FVector");
-    static_assert(TIsSame<decltype(UV0)::ElementType, FVector2D>::Value, "UV0 must be FVector2D");
+    static_assert(TIsSame<typename TArray<FVector>::ElementType, FVector>::Value, "Normals must be FVector");
+    static_assert(TIsSame<typename TArray<FVector2D>::ElementType, FVector2D>::Value, "UV0 must be FVector2D");
 
     // --- Generate Normals + Tangents ---
     UKismetProceduralMeshLibrary::CalculateTangentsForMesh(

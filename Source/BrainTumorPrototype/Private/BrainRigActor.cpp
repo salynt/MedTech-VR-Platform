@@ -163,9 +163,12 @@ void ABrainRigActor::ShowHalfBrainSlice(AProceduralObjActor* NewSlice)
         return;
     }
 
-    // Hide full brain + tumor
+    // Hide full brain + tumor(s)
     if (BrainActor)  BrainActor->SetActorHiddenInGame(true);
-    if (TumorActor)  TumorActor->SetActorHiddenInGame(true);
+    if (TumorClass1Actor)  TumorClass1Actor->SetActorHiddenInGame(true);
+    if (TumorClass1Actor)  TumorClass1Actor->SetActorHiddenInGame(true);
+    if (TumorClass1Actor)  TumorClass1Actor->SetActorHiddenInGame(true);
+
 
     // Hide all slices first so the previous one isn't left visible
     if (AxialActor)    AxialActor->SetActorHiddenInGame(true);
@@ -191,6 +194,7 @@ void ABrainRigActor::ShowFullBrain(AProceduralObjActor* /*NewSlice*/)
     if (AxialActor)    AxialActor->SetActorHiddenInGame(true);
     if (CoronalActor)  CoronalActor->SetActorHiddenInGame(true);
     if (SagittalActor) SagittalActor->SetActorHiddenInGame(true);
+
 
     UE_LOG(LogTemp, Log, TEXT("ShowFullBrain: Restored brain + tumor, hid all slices."));
 }

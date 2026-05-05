@@ -33,6 +33,15 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Brain Rig")
     AProceduralObjActor* TumorActor = nullptr;
 
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Brain Rig")
+    AProceduralObjActor* TumorClass1Actor = nullptr;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Brain Rig")
+    AProceduralObjActor* TumorClass2Actor = nullptr;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Brain Rig")
+    AProceduralObjActor* TumorClass3Actor = nullptr;
+
     // ----------------------------
     // Slice actors
     // ----------------------------
