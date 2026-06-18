@@ -18,16 +18,20 @@ The 3D Visualization Platform is separated into two repositories:
 
 ---
 
-
-# Pipeline Flow:
-
+# Pipeline Flow
+```
 MRI / DICOM Data
-- FastAPI Backend Processing
-- Segmentation & Preprocessing
-- Marching Cubes Mesh Extraction
-- OBJ Mesh Export
-- Unreal Engine VR Visualization
-
+        ↓
+FastAPI Backend Processing
+        ↓
+Segmentation & Preprocessing
+        ↓
+Marching Cubes Mesh Extraction
+        ↓
+OBJ Mesh Export
+        ↓
+Unreal Engine VR Visualization
+```
 
 # Tech Stack
 
@@ -43,6 +47,24 @@ MRI / DICOM Data
 | Anatomical Navigation | Axial, Coronal, Sagittal slicing |
 
 ---
+
+# Setup
+
+## Requirements
+
+- Unreal Engine 5
+- VR-ready PC
+- OpenXR compatible headset
+- Backend visualization pipeline running locally
+
+## Launch
+
+1. Start the FastAPI backend pipeline
+2. Open `BrainTumorPrototype.uproject`
+3. Run 'Medtech MRI 3D Visualization Backend Pipeline' 
+3. Launch the Unreal Engine editor
+4. Start VR Preview mode
+5. Load generated MRI mesh assets
 
 # Project Structure
 

@@ -26,7 +26,7 @@
 		},
 		{
 			"Name": "OpenXREyeTracker",
-			"Enabled": true,
+			"Enabled": false,
 			"SupportedTargetPlatforms": [
 				"Win64",
 				"Linux",
@@ -35,7 +35,7 @@
 		},
 		{
 			"Name": "OpenXRHandTracking",
-			"Enabled": true,
+			"Enabled": false,
 			"SupportedTargetPlatforms": [
 				"Win64",
 				"Linux",

@@ -148,8 +148,8 @@ void APipeRunner::BeginPlay()
     UE_LOG(LogTemp, Log, TEXT("[PipeRunner] TumorClass2Material: %s"), TumorClass2Material ? TEXT("OK") : TEXT("NULL"));
     UE_LOG(LogTemp, Log, TEXT("[PipeRunner] TumorClass3Material: %s"), TumorClass3Material ? TEXT("OK") : TEXT("NULL"));
 
-    // Kick off the backend pipeline
-    RunPipeline();
+    // Make sure the backend is up (launching it if needed) before running the pipeline
+    EnsureBackendRunning();
 }
 
 void APipeRunner::Tick(float DeltaTime)
@@ -161,7 +161,7 @@ void APipeRunner::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
     Super::EndPlay(EndPlayReason);
 
-    UE_LOG(LogTemp, Warning, TEXT("PipeRunner::EndPlay – cleaning up meshes."));
+    UE_LOG(LogTemp, Warning, TEXT("PipeRunner::EndPlay ï¿½ cleaning up meshes."));
     ClearMeshes();
     DeleteSavedMeshes();
 }
@@ -254,6 +254,110 @@ void APipeRunner::OnPipelineResponse(
 }
 
 //////////////////////////////////////////////////////////////////////////
+// BACKEND AUTO-LAUNCH
+//////////////////////////////////////////////////////////////////////////
+
+void APipeRunner::EnsureBackendRunning()
+{
+    UE_LOG(LogTemp, Log, TEXT("[PipeRunner] Checking if backend is already running at %s"), *BackendHealthUrl);
+    CheckBackendHealth(true);
+}
+
+void APipeRunner::CheckBackendHealth(bool bIsInitialCheck)
+{
+    TSharedRef<IHttpRequest> Req = FHttpModule::Get().CreateRequest();
+    Req->SetURL(BackendHealthUrl);
+    Req->SetVerb(TEXT("GET"));
+    Req->SetTimeout(5.0f);
+    Req->OnProcessRequestComplete().BindUObject(this, &APipeRunner::OnHealthCheckResponse, bIsInitialCheck);
+    Req->ProcessRequest();
+}
+
+void APipeRunner::OnHealthCheckResponse(
+    FHttpRequestPtr Request,
+    FHttpResponsePtr Response,
+    bool bWasSuccessful,
+    bool bIsInitialCheck)
+{
+    const bool bHealthy = bWasSuccessful && Response.IsValid() && Response->GetResponseCode() == 200;
+
+    if (bHealthy)
+    {
+        UE_LOG(LogTemp, Log, TEXT("[PipeRunner] Backend is healthy. Running pipeline."));
+
+        if (BackendHealthPollTimer.IsValid())
+        {
+            GetWorldTimerManager().ClearTimer(BackendHealthPollTimer);
+        }
+
+        RunPipeline();
+        return;
+    }
+
+    if (bIsInitialCheck)
+    {
+        // Backend isn't up yet - launch it ourselves and start polling for readiness.
+        UE_LOG(LogTemp, Log, TEXT("[PipeRunner] Backend not reachable yet. Launching it from %s"), *BackendDirectory);
+        SpawnBackendProcess();
+
+        HealthPollAttempts = 0;
+        GetWorldTimerManager().SetTimer(
+            BackendHealthPollTimer, this, &APipeRunner::PollBackendHealth, HealthPollIntervalSeconds, true);
+    }
+    // else: a poll tick simply failed - the timer will fire again and we'll retry.
+}
+
+void APipeRunner::SpawnBackendProcess()
+{
+    const FString PythonExe = BackendDirectory / TEXT(".venv/Scripts/python.exe");
+
+    if (!FPaths::FileExists(PythonExe))
+    {
+        UE_LOG(LogTemp, Error,
+            TEXT("[PipeRunner] Could not find %s - check BackendDirectory and that the backend's venv is set up."),
+            *PythonExe);
+        return;
+    }
+
+    const FString Args = TEXT("-m uvicorn app.main:app --host 127.0.0.1 --port 8000");
+    const bool bHideWindow = !bShowBackendConsole;
+
+    BackendProcessHandle = FPlatformProcess::CreateProc(
+        *PythonExe, *Args,
+        /*bLaunchDetached=*/ true,
+        /*bLaunchHidden=*/ bHideWindow,
+        /*bLaunchReallyHidden=*/ bHideWindow,
+        /*OutProcessID=*/ nullptr,
+        /*PriorityModifier=*/ 0,
+        /*OptionalWorkingDirectory=*/ *BackendDirectory,
+        /*PipeWriteChild=*/ nullptr);
+
+    if (BackendProcessHandle.IsValid())
+    {
+        UE_LOG(LogTemp, Log, TEXT("[PipeRunner] Backend process launched from %s"), *BackendDirectory);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("[PipeRunner] Failed to launch backend process from %s"), *BackendDirectory);
+    }
+}
+
+void APipeRunner::PollBackendHealth()
+{
+    HealthPollAttempts++;
+
+    if (HealthPollAttempts > MaxHealthPollAttempts)
+    {
+        GetWorldTimerManager().ClearTimer(BackendHealthPollTimer);
+        UE_LOG(LogTemp, Error,
+            TEXT("[PipeRunner] Backend did not become ready in time. Check BackendDirectory / venv / port 8000."));
+        return;
+    }
+
+    CheckBackendHealth(false);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // MESH DOWNLOAD HANDLING
 //////////////////////////////////////////////////////////////////////////
 
@@ -310,7 +414,7 @@ void APipeRunner::OnMeshDownloaded(
     if (PendingDownloads <= 0 && bPipelineCompleted && !bMeshesSpawned)
     {
         bMeshesSpawned = true;
-        UE_LOG(LogTemp, Warning, TEXT("All downloads complete – spawning meshes"));
+        UE_LOG(LogTemp, Warning, TEXT("All downloads complete ï¿½ spawning meshes"));
         SpawnMeshesFromSaved();
     }
 }
@@ -461,7 +565,7 @@ void APipeRunner::SpawnMeshesFromSaved()
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("BrainMID not created – no material slot 0."));
+        UE_LOG(LogTemp, Warning, TEXT("BrainMID not created ï¿½ no material slot 0."));
     }
 
     if (Rig->TumorActor && Rig->TumorActor->ProcMesh &&
@@ -472,7 +576,7 @@ void APipeRunner::SpawnMeshesFromSaved()
     }
     else
     {
-        UE_LOG(LogTemp, Warning, TEXT("TumorMID not created – no material slot 0."));
+        UE_LOG(LogTemp, Warning, TEXT("TumorMID not created ï¿½ no material slot 0."));
     }
 
     UE_LOG(LogTemp, Warning, TEXT("Meshes spawned successfully."));

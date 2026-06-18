@@ -8,6 +8,10 @@
 #include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
 
+// FProcHandle (backend auto-launch) / FTimerHandle (health-check polling)
+#include "HAL/PlatformProcess.h"
+#include "TimerManager.h"
+
 #include "PipeRunner.generated.h"
 
 class AProceduralObjActor;
@@ -80,6 +84,28 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Brain Position")
     FRotator BrainRotation = FRotator::ZeroRotator;
 
+    // =====================================================
+    //  BACKEND AUTO-LAUNCH
+    // =====================================================
+
+    // Folder containing the FastAPI backend (.venv, app/, etc.) - matches StartBackend.bat
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Backend")
+    FString BackendDirectory = TEXT("C:/Programming/mri-ai-backend");
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Backend")
+    FString BackendHealthUrl = TEXT("http://127.0.0.1:8000/health");
+
+    // Keep a visible console window for uvicorn output (like StartBackend.bat does today)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Backend")
+    bool bShowBackendConsole = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Backend")
+    float HealthPollIntervalSeconds = 0.5f;
+
+    // ~30s timeout for a cold Python/uvicorn startup
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Backend")
+    int32 MaxHealthPollAttempts = 60;
+
     UFUNCTION(BlueprintCallable)
     void ClearMeshes();
 
@@ -101,6 +127,17 @@ private:
     void OnMeshDownloaded(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bWasSuccessful, FString SavePath);
     // Spawn into scene
     void SpawnMeshesFromSaved();
+
+    // Backend auto-launch
+    void EnsureBackendRunning();
+    void SpawnBackendProcess();
+    void PollBackendHealth();
+    void CheckBackendHealth(bool bIsInitialCheck);
+    void OnHealthCheckResponse(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bWasSuccessful, bool bIsInitialCheck);
+
+    FProcHandle BackendProcessHandle;
+    FTimerHandle BackendHealthPollTimer;
+    int32 HealthPollAttempts = 0;
 
     bool bMeshesSpawned = false;
 
